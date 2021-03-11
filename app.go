@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	kafka "github.com/segmentio/kafka-go"
@@ -55,7 +56,12 @@ var callback = func(v []byte) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	return mold, nil
+
+	b, err := json.Marshal(mold)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
 }
 
 // Handler will handle data in Rx way
