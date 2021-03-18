@@ -1,6 +1,6 @@
 # yomo-sink-redpanda-example
 
-Redpanda 🙌 YoMo. This exmpale demonstrates how to integrate Redpanda to YoMo and bulk produce messages into Redpanda after stream processing.
+Redpanda 🙌 YoMo. This exmpale demonstrates how to integrate Redpanda to YoMo and bulk produce messages into Redpanda after stream processing by YoMo.
 
 ## About Redpanda
 
@@ -22,13 +22,15 @@ For more information, please visit [YoMo homepage](https://yomo.run/).
 
 Please visit [Redpanda Getting Started](https://vectorized.io/docs/quick-start-linux) and enable [PandaProxy](https://github.com/vectorizedio/redpanda/pull/682) after installation.
 
+This example will use HTTP REST API in `PandaProxy` to produce the message.
+
 ### Install YoMo CLI
 
 Please visit [YoMo Getting Started](https://github.com/yomorun/yomo#1-install-cli).
 
 ## Quick Start
 
-## Create a topic in Redpanda
+### Create a topic in Redpanda
 
 We’ll call it "yomo-test":
 
@@ -174,7 +176,7 @@ func Handler(rxstream rx.RxStream) rx.RxStream {
 
 ### Run your serverless app in development
 
-`PANDAPROXY_URL` is the URL of your `PandaProxy` in Redpanda.
+`PANDAPROXY_URL` is the URL of `PandaProxy` in Redpanda.
 
 ```bash
 $ PANDAPROXY_URL=http://127.0.0.1:8082 yomo dev
