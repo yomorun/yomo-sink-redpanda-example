@@ -1,56 +1,106 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"os"
+	"time"
 
-	kafka "github.com/segmentio/kafka-go"
+	"github.com/reactivex/rxgo/v2"
 	y3 "github.com/yomorun/y3-codec-golang"
 	"github.com/yomorun/yomo/pkg/rx"
 )
 
-// NoiseDataKey represents the Tag of a Y3 encoded data packet
-const NoiseDataKey = 0x10
-const topic = "yomo-test"
-const partition = 0
+// noiseDataKey represents the Tag of a Y3 encoded data packet
+const noiseDataKey = 0x10
+const batchSize = 1000
+const bufferSeconds = 30
 
 var (
-	Conn *kafka.Conn = nil
+	pandaproxyURL = ""
+	topic         = ""
+	bufferTime    = rxgo.WithDuration(bufferSeconds * time.Second)
 )
 
 func init() {
-	var err error = nil
-	// TODO os.env
-	Conn, err = kafka.DialLeader(context.Background(), "tcp", "localhost:9092", topic, partition)
-
-	if err != nil {
-		panic(err)
+	pandaproxyURL = os.Getenv("PANDAPROXY_URL")
+	if pandaproxyURL == "" {
+		pandaproxyURL = "http://localhost:8082"
+	}
+	topic = os.Getenv("REDPANDA_TOPIC")
+	if topic == "" {
+		topic = "yomo-test"
 	}
 }
 
-type NoiseData struct {
-	Noise float32 `y3:"0x11"`
-	Time  int64   `y3:"0x12"`
-	From  string  `y3:"0x13"`
+type noiseData struct {
+	Noise float32 `y3:"0x11" json:"noise"`
+	Time  int64   `y3:"0x12" json:"time"`
+	From  string  `y3:"0x13" json:"from"`
+}
+
+type postData struct {
+	Records []noiseDataItem `json:"records"`
+}
+
+type noiseDataItem struct {
+	Value     interface{} `json:"value"`
+	Partition int         `json:"partition"`
+}
+
+// get POST body to Redpanda Proxy
+func getPostBody(data []interface{}) ([]byte, error) {
+	items := make([]noiseDataItem, len((data)))
+	for i, noise := range data {
+		items[i] = noiseDataItem{
+			Value:     noise,
+			Partition: 0,
+		}
+	}
+	return json.Marshal(postData{
+		Records: items,
+	})
 }
 
 // write to Redpanda
-var produce = func(_ context.Context, i interface{}) (interface{}, error) {
-	_, err := Conn.WriteMessages(
-		kafka.Message{Value: i.([]byte)},
-	)
-
+var produce = func(_ context.Context, v interface{}) (interface{}, error) {
+	data, ok := v.([]interface{})
+	if !ok {
+		return nil, errors.New("v is not a slice")
+	}
+	postBody, err := getPostBody(data)
 	if err != nil {
 		return nil, err
 	}
 
-	return fmt.Sprintf("⚡️ %d successfully write to the redpanda", len(i.([]byte))), nil
+	// post data to Redpanda
+	resp, err := http.Post(fmt.Sprintf("%s/topics/%s", pandaproxyURL, topic), "application/vnd.kafka.binary.v2+json", bytes.NewBuffer(postBody))
+	if err != nil {
+		log.Fatalln(err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+	// read the response body
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalln(err)
+		return nil, err
+	}
+
+	log.Printf(string(body))
+
+	return fmt.Sprintf("⚡️ write %d items to redpanda successfully", len(data)), nil
 }
 
 // y3 callback
 var callback = func(v []byte) (interface{}, error) {
-	var mold NoiseData
+	var mold noiseData
 	err := y3.ToObject(v, &mold)
 
 	if err != nil {
@@ -66,15 +116,12 @@ var callback = func(v []byte) (interface{}, error) {
 
 // Handler will handle data in Rx way
 func Handler(rxstream rx.RxStream) rx.RxStream {
-	if Conn == nil {
-		panic("not found kafka Conn.")
-	}
-
 	stream := rxstream.
-		Subscribe(NoiseDataKey).
+		Subscribe(noiseDataKey).
 		OnObserve(callback).
+		BufferWithTimeOrCount(bufferTime, batchSize).
 		Map(produce).
 		StdOut().
-		Encode(NoiseDataKey)
+		Encode(noiseDataKey)
 	return stream
 }
