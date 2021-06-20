@@ -1,6 +1,6 @@
 # yomo-sink-redpanda-example
 
-Redpanda 🙌 YoMo. This exmpale demonstrates how to integrate Redpanda to YoMo and bulk produce messages into Redpanda after stream processing by YoMo.
+Redpanda 🙌 YoMo. This example demonstrates how to integrate Redpanda to YoMo and bulk produce messages into Redpanda after stream processing by YoMo.
 
 ## About Redpanda
 
